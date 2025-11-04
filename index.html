@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuraVision - AI Object Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #0B0C10 0%, #1F2833 50%, #0B0C10 100%);
+            min-height: 100vh;
+            color: #C5C6C7;
+            overflow-x: hidden;
+        }
+
+        /* Splash Screen */
+        #splashScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0B0C10 0%, #1F2833 50%, #8A2BE2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        #splashScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .splash-logo {
+            width: 150px;
+            height: 150px;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 1.5s ease-in-out infinite;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.6);
+        }
+
+        .splash-logo i {
+            font-size: 80px;
+            color: #00FFFF;
+        }
+
+        .splash-title {
+            margin-top: 30px;
+            font-size: 42px;
+            font-weight: 700;
+            color: #00FFFF;
+            letter-spacing: 2px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+        }
+
+        .splash-tagline {
+            margin-top: 10px;
+            font-size: 16px;
+            color: #C5C6C7;
+            letter-spacing: 1px;
+        }
+
+        .splash-powered {
+            margin-top: 5px;
+            font-size: 14px;
+            color: #8A2BE2;
+            font-style: italic;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(0.8); }
+            50% { transform: scale(1.2); }
+        }
+
+        /* Main Container */
+        #mainApp {
+            display: none;
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+
+        #mainApp.active {
+            display: block;
+        }
+
+        /* Header */
+        .app-header {
+            background: rgba(31, 40, 51, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            border-bottom: 2px solid rgba(0, 255, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 255, 255, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .app-header h1 {
+            font-size: 28px;
+            color: #00FFFF;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            padding: 16px;
+            background: rgba(31, 40, 51, 0.8);
+            margin: 16px;
+            border-radius: 20px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #00FFFF;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #C5C6C7;
+            margin-top: 4px;
+        }
+
+        /* Camera Container */
+        .camera-container {
+            position: relative;
+            max-width: 640px;
+            margin: 0 auto 20px;
+            padding: 0 16px;
+        }
+
+        .camera-view {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 3px solid rgba(138, 43, 226, 0.3);
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .camera-view.active {
+            border-color: #00FFFF;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.5);
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+            min-height: 400px;
+            background: #000;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .scan-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #00FFFF, transparent);
+            box-shadow: 0 0 20px #00FFFF;
+            display: none;
+            animation: scan 2s linear infinite;
+        }
+
+        .scan-line.active {
+            display: block;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+
+        .camera-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: rgba(197, 198, 199, 0.5);
+        }
+
+        .camera-placeholder i {
+            font-size: 80px;
+            margin-bottom: 16px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            padding: 24px 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 16px 32px;
+            border: none;
+            border-radius: 30px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #00FFFF;
+            color: #0B0C10;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+        }
+
+        .btn-primary.active {
+            background: #8A2BE2;
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00FFFF;
+            border: 2px solid #00FFFF;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(0, 255, 255, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn i {
+            font-size: 20px;
+        }
+
+        /* Detection Log */
+        .detection-section {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 0 16px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            color: #00FFFF;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .detection-log {
+            background: rgba(31, 40, 51, 0.6);
+            border-radius: 16px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 2px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .log-entry {
+            background: rgba(0, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border-left: 4px solid #00FFFF;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .log-objects {
+            color: #00FFFF;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .log-time {
+            color: #8A2BE2;
+            font-size: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: rgba(197, 198, 199, 0.5);
+        }
+
+        .empty-state i {
+            font-size: 60px;
+            margin-bottom: 16px;
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(31, 40, 51, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            border-top: 2px solid rgba(0, 255, 255, 0.3);
+            box-shadow: 0 -4px 20px rgba(0, 255, 255, 0.2);
+            z-index: 100;
+        }
+
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            color: #C5C6C7;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            background: none;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .nav-item i {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .nav-item span {
+            font-size: 12px;
+        }
+
+        .nav-item.active {
+            color: #00FFFF;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        /* Screens */
+        .screen {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* History Screen */
+        .history-list {
+            padding: 16px;
+        }
+
+        .history-card {
+            background: rgba(31, 40, 51, 0.8);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            gap: 16px;
+            border: 2px solid rgba(0, 255, 255, 0.2);
+            animation: slideIn 0.3s ease;
+        }
+
+        .history-thumbnail {
+            width: 80px;
+            height: 80px;
+            background: #000;
+            border-radius: 12px;
+            border: 2px solid #00FFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .history-thumbnail i {
+            font-size: 40px;
+            color: #00FFFF;
+        }
+
+        .history-content {
+            flex: 1;
+        }
+
+        .history-objects {
+            color: #00FFFF;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .history-time {
+            color: #8A2BE2;
+            font-size: 14px;
+        }
+
+        .history-delete {
+            background: rgba(138, 43, 226, 0.2);
+            color: #8A2BE2;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        /* Settings Screen */
+        .settings-list {
+            padding: 16px;
+        }
+
+        .setting-card {
+            background: rgba(31, 40, 51, 0.8);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 2px solid rgba(0, 255, 255, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setting-info h3 {
+            color: #00FFFF;
+            margin-bottom: 4px;
+        }
+
+        .setting-info p {
+            font-size: 14px;
+            color: #C5C6C7;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(197, 198, 199, 0.3);
+            border-radius: 30px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: #00FFFF;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        .info-card {
+            background: rgba(138, 43, 226, 0.2);
+            border: 2px solid rgba(138, 43, 226, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .info-card h3 {
+            color: #8A2BE2;
+            margin-bottom: 12px;
+        }
+
+        .info-card p {
+            color: #C5C6C7;
+            margin-bottom: 8px;
+        }
+
+        .contact-email {
+            color: #00FFFF;
+            text-decoration: underline;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(11, 12, 16, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 255, 0.5);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .splash-title {
+                font-size: 32px;
+            }
+
+            .app-header h1 {
+                font-size: 24px;
+            }
+
+            .stats-bar {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .btn {
+                padding: 14px 24px;
+                font-size: 14px;
+            }
+        }
+
+        /* Font Awesome Alternative */
+        .icon-eye::before { content: '👁'; font-size: 80px; }
+        .icon-camera::before { content: '📷'; font-size: 80px; }
+        .icon-play::before { content: '▶'; }
+        .icon-stop::before { content: '⏹'; }
+        .icon-save::before { content: '💾'; }
+        .icon-history::before { content: '📜'; font-size: 60px; }
+        .icon-image::before { content: '🖼'; font-size: 40px; }
+        .icon-trash::before { content: '🗑'; }
+        .icon-detect::before { content: '📷'; font-size: 24px; }
+        .icon-list::before { content: '📋'; font-size: 24px; }
+        .icon-settings::before { content: '⚙'; font-size: 24px; }
+    </style>
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splashScreen">
+        <div class="splash-logo">
+            <i class="icon-eye"></i>
+        </div>
+        <h1 class="splash-title">NeuraVision</h1>
+        <p class="splash-tagline">See the unseen</p>
+        <p class="splash-powered">powered by Neuracore AI</p>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>NeuraVision</h1>
+        </header>
+
+        <!-- Detection Screen -->
+        <div id="detectionScreen" class="screen active">
+            <!-- Stats Bar -->
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-value" id="statusValue">Idle</div>
+                    <div class="stat-label">Status</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="objectsValue">0</div>
+                    <div class="stat-label">Objects</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="fpsValue">0</div>
+                    <div class="stat-label">FPS</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalValue">0</div>
+                    <div class="stat-label">Total</div>
+                </div>
+            </div>
+
+            <!-- Camera View -->
+            <div class="camera-container">
+                <div class="camera-view" id="cameraView">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="scan-line" id="scanLine"></div>
+                    <div class="camera-placeholder" id="placeholder">
+                        <i class="icon-camera"></i>
+                        <p>Camera Feed</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button class="btn btn-primary" id="startBtn">
+                    <i class="icon-play"></i>
+                    <span>Start Detection</span>
+                </button>
+                <button class="btn btn-secondary" id="saveBtn" style="display: none;">
+                    <i class="icon-save"></i>
+                    <span>Save</span>
+                </button>
+            </div>
+
+            <!-- Detection Log -->
+            <div class="detection-section">
+                <h2 class="section-title">
+                    <span>Detection Log</span>
+                </h2>
+                <div class="detection-log" id="detectionLog">
+                    <div class="empty-state">
+                        <i class="icon-history"></i>
+                        <p>No detections yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Screen -->
+        <div id="historyScreen" class="screen">
+            <div class="history-list" id="historyList">
+                <div class="empty-state">
+                    <i class="icon-history"></i>
+                    <p>No saved detections</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settingsScreen" class="screen">
+            <div class="settings-list">
+                <div class="setting-card">
+                    <div class="setting-info">
+                        <h3>Enable Alerts</h3>
+                        <p>Get notified when objects are detected</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="alertsToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-card">
+                    <div class="setting-info">
+                        <h3>Save Detections</h3>
+                        <p>Automatically save detection history</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="saveToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-card">
+                    <div class="setting-info">
+                        <h3>Dark Mode</h3>
+                        <p>Use dark theme (Recommended)</p>
+                    </div>
+                    <label c
